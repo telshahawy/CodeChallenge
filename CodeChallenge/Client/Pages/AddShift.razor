@@ -1,0 +1,155 @@
+﻿@page "/addShift"
+@using Newtonsoft.Json
+@using CodeChallenge.Shared.Common
+@inject HttpClient _http;
+@inject IToastService toastService;
+<h3>Add Shift</h3>
+
+<EditForm Model="@model" OnValidSubmit="@HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <div class="row">
+        <label class="col-md-3">
+            Employee :
+            <select required class="form-control" id="employeeId" @bind="model.EmployeeId">
+                <option>Select Employee</option>
+                @if (employees != null)
+                {
+                    foreach (var employee in employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                }
+            </select>
+        </label>
+
+        <label class="col-md-3">
+            Start Date:
+            <input type="datetime-local" class="form-control" @bind="model.StartDate" />
+        </label>
+        <label class="col-md-3">
+            End Date:
+            <input type="datetime-local" class="form-control" @bind="model.EndDate" />
+        </label>
+        <label class="col-md-3">
+            Shift type :
+            <select required class="form-control" id="shiftTypeId" @bind="model.ShiftTypeId">
+                <option>Select Shift</option>
+
+                @if (shiftTypes != null)
+                {
+                    foreach (var type in shiftTypes)
+                    {
+                        <option value="@type.Id">@type.Name</option>
+                    }
+                }
+            </select>
+        </label>
+    </div>
+    <div class="row">
+        <button class="offset-11 col-md-1 mt-2 btn btn-primary" type="submit">Add Shift</button>
+    </div>
+</EditForm>
+
+<h1 class="mt-2">Report</h1>
+@if (shifts == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Employee name</th>
+                <th>Start date</th>
+                <th>End date</th>
+                <th>Shift type</th>
+                <th>Break per hour</th>
+                <th>Break per four hours</th>
+                <th>Total break mins</th>
+
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var shift in shifts)
+            {
+                <tr>
+                    <td>@shift.Id</td>
+                    <td>@shift.Employee.Name</td>
+                    <td>@shift.StartDate.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@shift.EndDate.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@shift.ShiftType.Name</td>
+                    <td>@shift.ShiftType.BreakPerHourInMin</td>
+                    <td>@shift.ShiftType.BreakPerFourHoursInMin</td>
+                    <td>@calculateTotalBreak(shift)</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td><h3>Total days worked</h3></td>
+                <td colspan="3"></td>
+                <td><h3>@calculateTotalWorkedHours() days</h3></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+@code {
+    private List<ShiftTypeDto>? shiftTypes = new();
+    private List<EmployeeDto>? employees = new();
+    private List<ShiftDto>? shifts = new();
+    private AddShiftDto model = new()
+        {
+            StartDate = DateTime.Today.AddHours(-16),
+            EndDate = DateTime.Today.AddHours(-8),
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = await _http.GetFromJsonAsync<List<EmployeeDto>>("Employee");
+        shiftTypes = await _http.GetFromJsonAsync<List<ShiftTypeDto>>("Shifts/GetShiftTypes");
+        shifts = await _http.GetFromJsonAsync<List<ShiftDto>>("Shifts");
+    }
+
+    async Task HandleValidSubmit()
+    {
+        var response = await _http.PostAsJsonAsync("Shifts", model);
+        if (response.IsSuccessStatusCode)
+        {
+            model = new()
+                {
+                    StartDate = DateTime.Today.AddHours(-8),
+                    EndDate = DateTime.Today,
+                };
+            shifts = await _http.GetFromJsonAsync<List<ShiftDto>>("Shifts");
+            toastService.ShowSuccess("Added Successfully");
+        }
+        else
+        {
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var errorResponse = JsonConvert.DeserializeObject<BaseError>(responseContent);
+            if (errorResponse != null && !string.IsNullOrEmpty(errorResponse.Message))
+            {
+                toastService.ShowError(errorResponse.Message);
+            }
+        }
+    }
+    int calculateTotalBreak(ShiftDto shift)
+    {
+        var totalHours = (shift.EndDate - shift.StartDate).TotalHours;
+        shift.TotalBreakMins = (int)(totalHours * shift.ShiftType.BreakPerHourInMin);
+        if (totalHours > 4)
+            shift.TotalBreakMins = (int)(totalHours * shift.ShiftType.BreakPerFourHoursInMin);
+
+        return shift.TotalBreakMins;
+    }
+
+    string calculateTotalWorkedHours()
+    {
+        var totalInMins = shifts.Sum(c => (c.EndDate - c.StartDate).TotalMinutes) - (shifts.Sum(c => c.ShiftType.BreakPerHourInMin) + shifts.Sum(c => c.ShiftType.BreakPerFourHoursInMin));
+        return (totalInMins / 60).ToString("F1");
+    }
+}

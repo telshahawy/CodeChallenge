@@ -1,0 +1,64 @@
+﻿@page "/employees"
+@page "/"
+@inject HttpClient _http;
+
+<div class="row">
+    <h3 class="col">Employees</h3>
+    <EditForm class="row" Model="@employeeDto" OnValidSubmit="@save">
+        <DataAnnotationsValidator />
+        <div asp-validation-summary="All" class="text-danger"></div>
+        <div class="col-md-4">
+            <label>Name</label>
+            <input type="text" class="form-control" @bind="employeeDto.Name"/>
+        </div>
+        <button class="btn btn-primary col-sm-1 mt-4" type="submit">Add</button>
+    </EditForm>
+</div>
+
+@if (employees == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Creation date</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var employee in employees)
+            {
+                <tr>
+                    <td>@employee.Id</td>
+                    <td>@employee.Name</td>
+                    <td>@employee.CreationDate.ToShortDateString()</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+
+@code {
+    private List<EmployeeDto>? employees;
+    private EmployeeDto employeeDto = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = await _http.GetFromJsonAsync<List<EmployeeDto>>("Employee");
+    }
+
+    async Task save()
+    {
+        var response = await _http.PostAsJsonAsync("Employee", employeeDto);
+        if (response.IsSuccessStatusCode)
+        {
+            employeeDto = new();
+            employees = await _http.GetFromJsonAsync<List<EmployeeDto>>("Employee");
+        }
+    }
+}
